@@ -1,0 +1,69 @@
+name: 🎬 Movie Auto-Poster
+
+on:
+  schedule:
+    # প্রতিদিন ৩ বার পোস্ট (UTC সময় — বাংলাদেশ UTC+6)
+    # সকাল ৯টা BD  = ০৩:০০ UTC
+    # দুপুর ২টা BD  = ০৮:০০ UTC
+    # রাত ৮টা BD   = ১৪:০০ UTC
+    - cron: "0 3 * * *"
+    - cron: "0 8 * * *"
+    - cron: "0 14 * * *"
+
+  # হাতেও চালানো যাবে
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "ম্যানুয়াল চালানোর কারণ"
+        required: false
+        default: "Test run"
+
+jobs:
+  post-movie:
+    name: Post Movie to Facebook
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─── কোড চেকআউট ─────────────────────────────────────────────────
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # posted_movies.json push করার জন্য
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── posted_movies.json ক্যাশ (আগেরটা মনে রাখবে) ──────────────
+      - name: 📂 Restore Posted Movies Cache
+        uses: actions/cache@v4
+        with:
+          path: posted_movies.json
+          key: posted-movies-${{ github.run_number }}
+          restore-keys: |
+            posted-movies-
+
+      # ─── Python সেটআপ ────────────────────────────────────────────────
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install Dependencies
+        run: pip install requests
+
+      # ─── পোস্ট চালাও ─────────────────────────────────────────────────
+      - name: 🎬 Run Movie Poster
+        env:
+          TMDB_API_KEY:          ${{ secrets.TMDB_API_KEY }}
+          DEEPSEEK_API_KEY:      ${{ secrets.DEEPSEEK_API_KEY }}
+          FACEBOOK_PAGE_ID:      ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_ACCESS_TOKEN: ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
+        run: python scripts/post_movie.py
+
+      # ─── posted_movies.json repo-তে save করো ────────────────────────
+      - name: 💾 Save Posted Movies List
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add posted_movies.json || true
+          git diff --staged --quiet || git commit -m "📋 Update posted movies [skip ci]"
+          git push || true
