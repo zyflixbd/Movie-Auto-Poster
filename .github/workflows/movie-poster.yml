@@ -2,13 +2,13 @@ name: 🎬 Movie Auto-Poster
 
 on:
   schedule:
-    # প্রতিদিন ৩ বার পোস্ট (UTC সময় — বাংলাদেশ UTC+6)
-    # সকাল ৯টা BD  = ০৩:০০ UTC
-    # দুপুর ২টা BD  = ০৮:০০ UTC
-    # রাত ৮টা BD   = ১৪:০০ UTC
-    - cron: "0 3 * * *"
-    - cron: "0 8 * * *"
-    - cron: "0 14 * * *"
+    # প্রতিদিন ৩ বার পোস্ট (UTC সময় — কলকাতা UTC+5:30)
+    # সকাল ৯টা Kolkata  = ০৩:৩০ UTC
+    # দুপুর ২টা Kolkata  = ০৮:৩০ UTC
+    # রাত ৮টা Kolkata   = ১৪:৩০ UTC
+    - cron: "30 3 * * *"
+    - cron: "30 8 * * *"
+    - cron: "30 14 * * *"
 
   # হাতেও চালানো যাবে
   workflow_dispatch:
