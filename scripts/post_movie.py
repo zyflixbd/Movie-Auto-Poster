@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 🎬 Movie Auto-Poster
-TMDB → DeepSeek AI (বাংলা ক্যাপশন) → Facebook Page
+TMDB → NVIDIA DeepSeek AI (বাংলা ক্যাপশন) → Facebook Page
 """
 
 import os
@@ -12,17 +12,23 @@ import requests
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from openai import OpenAI
 
 # ─── API Keys (GitHub Secrets থেকে আসবে) ───────────────────────────────────
 TMDB_API_KEY        = os.environ["TMDB_API_KEY"]
-DEEPSEEK_API_KEY    = os.environ["DEEPSEEK_API_KEY"]
+NVIDIA_API_KEY      = os.environ["NVIDIA_API_KEY"]
 FB_PAGE_ID          = os.environ["FACEBOOK_PAGE_ID"]
 FB_ACCESS_TOKEN     = os.environ["FACEBOOK_ACCESS_TOKEN"]
 
 TMDB_BASE    = "https://api.themoviedb.org/3"
 TMDB_IMG     = "https://image.tmdb.org/t/p/w780"
-DS_BASE      = "https://api.deepseek.com/v1/chat/completions"
 FB_BASE      = "https://graph.facebook.com/v19.0"
+
+# ─── NVIDIA OpenAI-compatible client ────────────────────────────────────────
+nvidia_client = OpenAI(
+    base_url="https://integrate.api.nvidia.com/v1",
+    api_key=NVIDIA_API_KEY,
+)
 
 # ─── পূর্বে পোস্ট করা মুভি track রাখার ফাইল ──────────────────────────────
 POSTED_FILE = Path("posted_movies.json")
@@ -92,7 +98,7 @@ def download_poster(poster_path: str) -> str | None:
         return None
 
 
-# ─── DeepSeek: বাংলা ক্যাপশন তৈরি ────────────────────────────────────────
+# ─── NVIDIA DeepSeek: বাংলা ক্যাপশন তৈরি ────────────────────────────────
 def generate_caption(movie: dict) -> str:
     title      = movie.get("title", "")
     overview   = movie.get("overview", "")[:600]
@@ -131,21 +137,38 @@ def generate_caption(movie: dict) -> str:
 ❌ "অবশ্যই", "নিশ্চিতভাবে" এই ধরনের কথা দিয়ে শুরু করো না
 ❌ সাইটের লাইনটি কখনো পরিবর্তন বা অনুবাদ করো না — হুবহু রাখো"""
 
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 600,
-        "temperature": 0.85,
-    }
-    r = requests.post(DS_BASE, headers=headers, json=payload, timeout=30)
-    r.raise_for_status()
-    caption = r.json()["choices"][0]["message"]["content"].strip()
+    # NVIDIA API — streaming mode, reasoning enabled
+    completion = nvidia_client.chat.completions.create(
+        model="deepseek-ai/deepseek-r1-0528",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=1,
+        top_p=0.95,
+        max_tokens=16384,
+        extra_body={
+            "chat_template_kwargs": {
+                "thinking": True,
+                "reasoning_effort": "high",
+            }
+        },
+        stream=True,
+    )
 
-    print(f"✅ DeepSeek ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
+    caption_parts = []
+    for chunk in completion:
+        if not getattr(chunk, "choices", None):
+            continue
+        delta = chunk.choices[0].delta
+        # reasoning/thinking content — শুধু log করো, caption-এ নেবো না
+        reasoning = getattr(delta, "reasoning", None) or getattr(delta, "reasoning_content", None)
+        if reasoning:
+            print(reasoning, end="", flush=True)
+        # actual output
+        if delta.content:
+            caption_parts.append(delta.content)
+
+    caption = "".join(caption_parts).strip()
+    print()  # reasoning print-এর পর newline
+    print(f"✅ NVIDIA DeepSeek ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
     return caption
 
 
