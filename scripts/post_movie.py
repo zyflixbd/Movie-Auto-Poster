@@ -114,7 +114,7 @@ def generate_caption(movie: dict) -> str:
     )
 
     # Website line — Python থেকে inject, AI পরিবর্তন করতে পারবে না
-    WEBSITE_LINE = "ফ্রিতে মুভি ও সিরিজ দেখতে ভিজিট করুন অথবা গুগোলে সার্চ করুন - 𝐌𝐲𝐶𝐢𝐧𝐞𝐛𝐭.𝐜𝐨𝐦"
+    WEBSITE_LINE = "ফ্রিতে মুভি ও সিরিজ দেখতে ভিজিট করুন অথবা গুগোলে সার্চ করুন - 𝐌𝐲𝐜𝐢𝐧𝐞𝐛𝐝.𝐜𝐨𝐦"
 
     # First hashtag always: MovieTitle (Year)
     title_tag = title.replace(" ", "")
