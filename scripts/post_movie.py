@@ -28,6 +28,7 @@ FB_BASE      = "https://graph.facebook.com/v19.0"
 nvidia_client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
     api_key=NVIDIA_API_KEY,
+    max_retries=0,   # retry আমরা নিজে handle করবো
 )
 
 # ─── পূর্বে পোস্ট করা মুভি track রাখার ফাইল ──────────────────────────────
@@ -161,38 +162,78 @@ def generate_caption(movie: dict) -> str:
 ❌ হ্যাশট্যাগ ৪টির বেশি দেবে না
 ❌ রিভিউ অসম্পূর্ণ রাখবে না — শেষ পর্যন্ত লিখবে"""
 
-    print("⏳ NVIDIA DeepSeek V4 Flash API-তে request পাঠানো হচ্ছে...")
-
-    completion = nvidia_client.chat.completions.create(
-        model="deepseek-ai/deepseek-v4-flash",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.85,
-        top_p=0.95,
-        max_tokens=2048,
-        stream=True,
-        timeout=120,
-    )
-
-    caption_parts = []
-    for chunk in completion:
-        if not getattr(chunk, "choices", None):
-            continue
-        delta = chunk.choices[0].delta
-        # reasoning/thinking content — শুধু log করো, caption-এ নেবো না
-        reasoning = (
-            getattr(delta, "reasoning", None)
-            or getattr(delta, "reasoning_content", None)
+    # ─── Helper: একটি model দিয়ে caption তৈরির চেষ্টা ───────────────────
+    def _try_model(model_name: str, timeout_sec: int) -> str:
+        completion = nvidia_client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.85,
+            top_p=0.95,
+            max_tokens=2048,
+            stream=True,
+            timeout=timeout_sec,
         )
-        if reasoning:
-            print(reasoning, end="", flush=True)
-        # actual output content
-        if getattr(delta, "content", None):
-            caption_parts.append(delta.content)
+        parts = []
+        for chunk in completion:
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = chunk.choices[0].delta
+            # reasoning/thinking content — শুধু log করো, caption-এ নেবো না
+            reasoning = (
+                getattr(delta, "reasoning", None)
+                or getattr(delta, "reasoning_content", None)
+            )
+            if reasoning:
+                print(reasoning, end="", flush=True)
+            if getattr(delta, "content", None):
+                parts.append(delta.content)
+        result = "".join(parts).strip()
+        if not result:
+            raise ValueError(f"{model_name} থেকে খালি response এসেছে!")
+        return result
 
-    caption = "".join(caption_parts).strip()
-    if not caption:
-        raise ValueError("NVIDIA API থেকে খালি response এসেছে!")
-    print(f"\n✅ NVIDIA DeepSeek V4 Flash ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
+    # ─── Template fallback (AI ছাড়া, সর্বশেষ উপায়) ─────────────────────
+    def _template_caption() -> str:
+        genre_tags = "".join(f"#{g.replace(' ', '')}" for g in genres.split(", ")[:2])
+        return (
+            f"🎥 {title} ({release})\n"
+            f"Genre: {genres}\n\n"
+            f"⭐ রেটিং {rating}/10 পাওয়া এই মুভিটি এই বছরের অন্যতম আলোচিত একটি ছবি।\n\n"
+            f"🎬 পরিচালক {director}-এর হাত ধরে {cast} অভিনীত এই মুভিতে রয়েছে "
+            f"এক অসাধারণ গল্প যা আপনাকে শেষ মুহূর্ত পর্যন্ত স্ক্রিনে আটকে রাখবে।\n\n"
+            f"মিস করলে কিন্তু পস্তাবেন! 🔥\n\n"
+            f"{WEBSITE_LINE}\n\n"
+            f"#{title_tag} #{title_tag}{release} #Movies{release} {genre_tags}"
+        )
+
+    # ══════════════════════════════════════════════════════════════════════
+    # STEP 1 — Primary: NVIDIA DeepSeek V4 Flash
+    # ══════════════════════════════════════════════════════════════════════
+    print("⏳ [1/3] NVIDIA DeepSeek V4 Flash API-তে request পাঠানো হচ্ছে...")
+    try:
+        caption = _try_model("deepseek-ai/deepseek-v4-flash", timeout_sec=90)
+        print(f"\n✅ DeepSeek V4 Flash ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
+        return caption
+    except Exception as e:
+        print(f"\n⚠️ DeepSeek V4 Flash ব্যর্থ: {e}")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # STEP 2 — Fallback: NVIDIA Llama 3.3 70B (একই prompt)
+    # ══════════════════════════════════════════════════════════════════════
+    print("⏳ [2/3] Fallback — NVIDIA Llama 3.3 70B দিয়ে চেষ্টা করা হচ্ছে...")
+    try:
+        caption = _try_model("meta/llama-3.3-70b-instruct", timeout_sec=60)
+        print(f"\n✅ Llama 3.3 70B ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
+        return caption
+    except Exception as e:
+        print(f"\n⚠️ Llama 3.3 70B ব্যর্থ: {e}")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # STEP 3 — Last resort: Template caption
+    # ══════════════════════════════════════════════════════════════════════
+    print("⏳ [3/3] সব AI ব্যর্থ — Template caption ব্যবহার করা হচ্ছে...")
+    caption = _template_caption()
+    print(f"✅ Template ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
     return caption
 
 
