@@ -98,7 +98,7 @@ def download_poster(poster_path: str) -> str | None:
         return None
 
 
-# ─── NVIDIA DeepSeek: বাংলা ক্যাপশন তৈরি ────────────────────────────────
+# ─── NVIDIA DeepSeek V4 Flash: বাংলা ক্যাপশন তৈরি ──────────────────────
 def generate_caption(movie: dict) -> str:
     title      = movie.get("title", "")
     overview   = movie.get("overview", "")[:600]
@@ -137,17 +137,18 @@ def generate_caption(movie: dict) -> str:
 ❌ "অবশ্যই", "নিশ্চিতভাবে" এই ধরনের কথা দিয়ে শুরু করো না
 ❌ সাইটের লাইনটি কখনো পরিবর্তন বা অনুবাদ করো না — হুবহু রাখো"""
 
-    # NVIDIA API — streaming mode, reasoning enabled
+    print("⏳ NVIDIA DeepSeek V4 Flash API-তে request পাঠানো হচ্ছে...")
+
+    # deepseek-v4-flash এ chat_template_kwargs required (ছাড়া API hang করে)
     completion = nvidia_client.chat.completions.create(
-        model="deepseek-ai/deepseek-r1-0528",
+        model="deepseek-ai/deepseek-v4-flash",
         messages=[{"role": "user", "content": prompt}],
-        temperature=1,
+        temperature=0.85,
         top_p=0.95,
-        max_tokens=16384,
+        max_tokens=1024,
         extra_body={
             "chat_template_kwargs": {
                 "thinking": True,
-                "reasoning_effort": "high",
             }
         },
         stream=True,
@@ -159,16 +160,20 @@ def generate_caption(movie: dict) -> str:
             continue
         delta = chunk.choices[0].delta
         # reasoning/thinking content — শুধু log করো, caption-এ নেবো না
-        reasoning = getattr(delta, "reasoning", None) or getattr(delta, "reasoning_content", None)
+        reasoning = (
+            getattr(delta, "reasoning", None)
+            or getattr(delta, "reasoning_content", None)
+        )
         if reasoning:
             print(reasoning, end="", flush=True)
-        # actual output
-        if delta.content:
+        # actual output content
+        if getattr(delta, "content", None):
             caption_parts.append(delta.content)
 
     caption = "".join(caption_parts).strip()
-    print()  # reasoning print-এর পর newline
-    print(f"✅ NVIDIA DeepSeek ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
+    if not caption:
+        raise ValueError("NVIDIA API থেকে খালি response এসেছে!")
+    print(f"\n✅ NVIDIA DeepSeek V4 Flash ক্যাপশন তৈরি হয়েছে ({len(caption)} অক্ষর)")
     return caption
 
 
@@ -221,7 +226,7 @@ def main():
     image_path = download_poster(movie.get("poster_path"))
 
     # বাংলা ক্যাপশন তৈরি
-    print("\n✍️  DeepSeek দিয়ে বাংলা ক্যাপশন তৈরি হচ্ছে...")
+    print("\n✍️  NVIDIA DeepSeek V4 Flash দিয়ে বাংলা ক্যাপশন তৈরি হচ্ছে...")
     caption = generate_caption(movie)
     print(f"\n--- ক্যাপশন প্রিভিউ ---\n{caption[:200]}...\n")
 
