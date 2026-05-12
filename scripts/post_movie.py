@@ -114,7 +114,7 @@ def generate_caption(movie: dict) -> str:
     )
 
     # Website line — Python থেকে inject, AI পরিবর্তন করতে পারবে না
-    WEBSITE_LINE = "ফ্রিতে মুভি ও সিরিজ দেখতে ভিজিট করুন অথবা গুগোলে সার্চ করুন - 𝐌𝐲𝐜𝐢𝐧𝐞𝐛𝐝.𝐜𝐨𝐦"
+    WEBSITE_LINE = "ফ্রিতে মুভি ও সিরিজ দেখতে ভিজিট করুন অথবা গুগোলে সার্চ করুন - 𝐌𝐲𝐶𝐢𝐧𝐞𝐛𝐭.𝐜𝐨𝐦"
 
     # First hashtag always: MovieTitle (Year)
     title_tag = title.replace(" ", "")
@@ -163,19 +163,14 @@ def generate_caption(movie: dict) -> str:
 
     print("⏳ NVIDIA DeepSeek V4 Flash API-তে request পাঠানো হচ্ছে...")
 
-    # deepseek-v4-flash এ chat_template_kwargs required (ছাড়া API hang করে)
     completion = nvidia_client.chat.completions.create(
         model="deepseek-ai/deepseek-v4-flash",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.85,
         top_p=0.95,
         max_tokens=2048,
-        extra_body={
-            "chat_template_kwargs": {
-                "thinking": True,
-            }
-        },
         stream=True,
+        timeout=120,
     )
 
     caption_parts = []
