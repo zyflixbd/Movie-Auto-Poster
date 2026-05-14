@@ -164,11 +164,26 @@ def generate_caption(movie: dict) -> str:
 
     # ─── Helper: একটি model দিয়ে caption তৈরির চেষ্টা ───────────────────
     def _try_model(model_name: str, timeout_sec: int) -> str:
+        # Llama-এর জন্য system prompt দিলে অনেক ভালো output আসে
+        is_llama = "llama" in model_name.lower()
+        messages = []
+        if is_llama:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "তুমি একজন দক্ষ বাংলা কন্টেন্ট রাইটার যে বিনোদন পেজের জন্য "
+                    "আকর্ষণীয় ও প্রাণবন্ত Facebook পোস্ট লেখে। "
+                    "তোমার লেখা সবসময় সম্পূর্ণ, engaging এবং নির্দেশনা মোতাবেক হবে। "
+                    "কখনো অসম্পূর্ণ রাখবে না বা নিজে নিজে মন্তব্য যোগ করবে না।"
+                )
+            })
+        messages.append({"role": "user", "content": prompt})
+
         completion = nvidia_client.chat.completions.create(
             model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.85,
-            top_p=0.95,
+            messages=messages,
+            temperature=0.80 if is_llama else 0.85,
+            top_p=0.92 if is_llama else 0.95,
             max_tokens=2048,
             stream=True,
             timeout=timeout_sec,
@@ -190,6 +205,10 @@ def generate_caption(movie: dict) -> str:
         result = "".join(parts).strip()
         if not result:
             raise ValueError(f"{model_name} থেকে খালি response এসেছে!")
+        # Llama মাঝে মাঝে website line বা hashtag ছাড়া অসম্পূর্ণ output দেয় — চেক করো
+        if is_llama and WEBSITE_LINE not in result:
+            print(f"⚠️  {model_name}: website line নেই, manually append করা হচ্ছে...")
+            result = result.rstrip() + f"\n\n{WEBSITE_LINE}\n\n#{title_tag} #{title_tag}{release} #Movies{release}"
         return result
 
     # ─── Template fallback (AI ছাড়া, সর্বশেষ উপায়) ─────────────────────
